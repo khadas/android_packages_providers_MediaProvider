@@ -27,6 +27,7 @@ import android.os.Bundle;
 public class MtpReceiver extends BroadcastReceiver {
     private final static String TAG = "UsbReceiver";
 
+    private boolean mBooted = false;
     @Override
     public void onReceive(Context context, Intent intent) {
         final String action = intent.getAction();
@@ -36,8 +37,11 @@ public class MtpReceiver extends BroadcastReceiver {
             if (usbState != null) {
                 handleUsbState(context, usbState);
             }
+
+            mBooted = true;
         } else if (UsbManager.ACTION_USB_STATE.equals(action)) {
-            handleUsbState(context, intent);
+            if(mBooted)
+                handleUsbState(context, intent);
         }
     }
 

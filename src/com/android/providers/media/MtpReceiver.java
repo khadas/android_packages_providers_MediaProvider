@@ -52,6 +52,8 @@ public class MtpReceiver extends BroadcastReceiver {
         // Start MTP service if USB is connected and either the MTP or PTP function is enabled
         if (connected && (mtpEnabled || ptpEnabled)) {
             intent = new Intent(context, MtpService.class);
+            // set usb data unlocked true
+            unlocked = true;
             intent.putExtra(UsbManager.USB_DATA_UNLOCKED, unlocked);
             if (ptpEnabled) {
                 intent.putExtra(UsbManager.USB_FUNCTION_PTP, true);

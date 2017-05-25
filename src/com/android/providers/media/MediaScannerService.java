@@ -236,6 +236,8 @@ public class MediaScannerService extends Service implements Runnable {
                         };
                     }
                     else if (MediaProvider.EXTERNAL_VOLUME.equals(volume)) {
+                        StorageManager storageManager = (StorageManager)getSystemService(Context.STORAGE_SERVICE);
+                        mExternalStoragePaths = storageManager.getVolumePaths();
                         // scan external storage volumes
                         if (getSystemService(UserManager.class).isDemoUser()) {
                             directories = ArrayUtils.appendElement(String.class,

@@ -23,6 +23,9 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.storage.StorageManager;
+import android.os.storage.VolumeInfo;
+import android.os.SystemProperties;
 import android.provider.MediaStore;
 import android.util.Log;
 
@@ -41,6 +44,18 @@ public class MediaScannerReceiver extends BroadcastReceiver {
             scan(context, MediaProvider.INTERNAL_VOLUME);
         } else if (Intent.ACTION_LOCALE_CHANGED.equals(action)) {
             scanTranslatable(context);
+        } else if((VolumeInfo.ACTION_VOLUME_STATE_CHANGED.equals(action))){
+            if(("true".equals(SystemProperties.get("ro.vendor.udisk.visible")))){
+                String id = intent.getStringExtra(VolumeInfo.EXTRA_VOLUME_ID);
+                int state = intent.getIntExtra(VolumeInfo.EXTRA_VOLUME_STATE,-1);
+                if(VolumeInfo.STATE_MOUNTED == state) {
+                    Log.d(TAG,"----MediaScanner get volume mounted,start scan---");
+                    /*StorageManager mStorageManager = context.getSystemService(StorageManager.class);
+                    VolumeInfo vol = mStorageManager.findVolumeById(id);
+                    scanFile(context, vol.getPath().getPath());*/
+                    scan(context, MediaProvider.EXTERNAL_VOLUME);
+                }
+            }
         } else {
             if (uri.getScheme().equals("file")) {
                 // handle intents related to external storage

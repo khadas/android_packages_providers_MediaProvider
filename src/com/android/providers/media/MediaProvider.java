@@ -155,8 +155,6 @@ public class MediaProvider extends ContentProvider {
     private AppOpsManager mAppOpsManager;
     private PackageManager mPackageManager;
 
-    private ArrayList<String> mRemovableStorageVolumes = new ArrayList<String>();
-
     // In memory cache of path<->id mappings, to speed up inserts during media scan
     HashMap<String, Long> mDirectoryCache = new HashMap<String, Long>();
 
@@ -266,7 +264,6 @@ public class MediaProvider extends ContentProvider {
     private BroadcastReceiver mUnmountReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            Log.d(TAG,"MediaProvider mUnmountReceiver action " + intent.getAction());
             if (Intent.ACTION_MEDIA_EJECT.equals(intent.getAction())) {
                 StorageVolume storage = (StorageVolume)intent.getParcelableExtra(
                         StorageVolume.EXTRA_STORAGE_VOLUME);
@@ -277,66 +274,53 @@ public class MediaProvider extends ContentProvider {
                     sFolderArtMap.clear();
                     MiniThumbFile.reset();
                 } else {
-                    delete(context, storage.getPath());
-                }
-            } else if ((VolumeInfo.ACTION_VOLUME_STATE_CHANGED.equals(intent.getAction()))) {
-                int state = intent.getIntExtra(VolumeInfo.EXTRA_VOLUME_STATE, -1);
-                if (VolumeInfo.STATE_MOUNTED == state) {
-                    Log.d(TAG, "STATE_MOUNTED");
-                    addRemovableStorageVolume();
-                } else if (VolumeInfo.STATE_UNMOUNTED == state) {
-                    Log.d(TAG, "STATE_UNMOUNTED");
-                    deleteRemovableStorageVolume(context);
+                    // If secondary external storage is ejected, then we delete all database
+                    // entries for that storage from the files table.
+                    DatabaseHelper database;
+                    synchronized (mDatabases) {
+                        // This synchronized block is limited to avoid a potential deadlock
+                        // with bulkInsert() method.
+                        database = mDatabases.get(EXTERNAL_VOLUME);
+                    }
+                    Uri uri = Uri.parse("file://" + storage.getPath());
+                    if (database != null) {
+                        try {
+                            // Send media scanner started and stopped broadcasts for apps that rely
+                            // on these Intents for coarse grained media database notifications.
+                            context.sendBroadcast(
+                                    new Intent(Intent.ACTION_MEDIA_SCANNER_STARTED, uri));
+
+                            Log.d(TAG, "deleting all entries for storage " + storage);
+                            Uri.Builder builder =
+                                    Files.getMtpObjectsUri(EXTERNAL_VOLUME).buildUpon();
+                            builder.appendQueryParameter(MediaStore.PARAM_DELETE_DATA, "false");
+                            delete(builder.build(),
+                                    // the 'like' makes it use the index, the 'lower()' makes it
+                                    // correct when the path contains sqlite wildcard characters
+                                    "_data LIKE ?1 AND lower(substr(_data,1,?2))=lower(?3)",
+                                    new String[]{storage.getPath() + "/%",
+                                            Integer.toString(storage.getPath().length() + 1),
+                                            storage.getPath() + "/"});
+                            // notify on media Uris as well as the files Uri
+                            context.getContentResolver().notifyChange(
+                                    Audio.Media.getContentUri(EXTERNAL_VOLUME), null);
+                            context.getContentResolver().notifyChange(
+                                    Images.Media.getContentUri(EXTERNAL_VOLUME), null);
+                            context.getContentResolver().notifyChange(
+                                    Video.Media.getContentUri(EXTERNAL_VOLUME), null);
+                            context.getContentResolver().notifyChange(
+                                    Files.getContentUri(EXTERNAL_VOLUME), null);
+                        } catch (Exception e) {
+                            Log.e(TAG, "exception deleting storage entries", e);
+                        } finally {
+                            context.sendBroadcast(
+                                    new Intent(Intent.ACTION_MEDIA_SCANNER_FINISHED, uri));
+                        }
+                    }
                 }
             }
         }
     };
-
-    private void delete(Context context, String path) {
-        // If secondary external storage is ejected, then we delete all database
-        // entries for that storage from the files table.
-        DatabaseHelper database;
-        synchronized (mDatabases) {
-            // This synchronized block is limited to avoid a potential deadlock
-            // with bulkInsert() method.
-            database = mDatabases.get(EXTERNAL_VOLUME);
-        }
-        Uri uri = Uri.parse("file://" + path);
-        if (database != null) {
-            try {
-                // Send media scanner started and stopped broadcasts for apps that rely
-                // on these Intents for coarse grained media database notifications.
-                context.sendBroadcast(
-                        new Intent(Intent.ACTION_MEDIA_SCANNER_STARTED, uri));
-
-                Log.d(TAG, "deleting all entries for storage " + path);
-                Uri.Builder builder =
-                        Files.getMtpObjectsUri(EXTERNAL_VOLUME).buildUpon();
-                builder.appendQueryParameter(MediaStore.PARAM_DELETE_DATA, "false");
-                delete(builder.build(),
-                        // the 'like' makes it use the index, the 'lower()' makes it
-                        // correct when the path contains sqlite wildcard characters
-                        "_data LIKE ?1 AND lower(substr(_data,1,?2))=lower(?3)",
-                        new String[]{path + "/%",
-                                Integer.toString(path.length() + 1),
-                                path + "/"});
-                // notify on media Uris as well as the files Uri
-                context.getContentResolver().notifyChange(
-                        Audio.Media.getContentUri(EXTERNAL_VOLUME), null);
-                context.getContentResolver().notifyChange(
-                        Images.Media.getContentUri(EXTERNAL_VOLUME), null);
-                context.getContentResolver().notifyChange(
-                        Video.Media.getContentUri(EXTERNAL_VOLUME), null);
-                context.getContentResolver().notifyChange(
-                        Files.getContentUri(EXTERNAL_VOLUME), null);
-            } catch (Exception e) {
-                Log.e(TAG, "exception deleting storage entries", e);
-            } finally {
-                context.sendBroadcast(
-                        new Intent(Intent.ACTION_MEDIA_SCANNER_FINISHED, uri));
-            }
-        }
-    }
 
     private final SQLiteDatabase.CustomFunction mObjectRemovedCallback =
                 new SQLiteDatabase.CustomFunction() {
@@ -621,8 +605,6 @@ public class MediaProvider extends ContentProvider {
         IntentFilter iFilter = new IntentFilter(Intent.ACTION_MEDIA_EJECT);
         iFilter.addDataScheme("file");
         context.registerReceiver(mUnmountReceiver, iFilter);
-        IntentFilter iFilter1 = new IntentFilter(VolumeInfo.ACTION_VOLUME_STATE_CHANGED);
-        context.registerReceiver(mUnmountReceiver, iFilter1);
 
         // open external database if external storage is mounted
         String state = Environment.getExternalStorageState();
@@ -4965,9 +4947,6 @@ public class MediaProvider extends ContentProvider {
 
     private static final String INTERNAL_DATABASE_NAME = "internal.db";
     private static final String EXTERNAL_DATABASE_NAME = "external.db";
-    public static final String MEDIA_PATH = "^/mnt/media_rw";
-    public static final String STORAGE_PATH = "/storage";
-
 
     // maximum number of cached external databases to keep
     private static final int MAX_EXTERNAL_DATABASES = 3;
@@ -5264,33 +5243,5 @@ public class MediaProvider extends ContentProvider {
             }
         }
         return s.toString();
-    }
-
-    private void addRemovableStorageVolume() {
-        List<StorageVolume> storageVolumes = mStorageManager.getStorageVolumes();
-        mRemovableStorageVolumes.clear();
-        for (StorageVolume vol : storageVolumes) {
-            if (vol.isRemovable()) {
-                mRemovableStorageVolumes.add(vol.getPath().replaceFirst(MEDIA_PATH, STORAGE_PATH));
-            }
-        }
-        Log.d(TAG, "mRemovableStorageVolumes size " + mRemovableStorageVolumes.size());
-    }
-
-    private void deleteRemovableStorageVolume(Context context) {
-        List<StorageVolume> storageVolumes = mStorageManager.getStorageVolumes();
-        boolean isExsit = false;
-        for (String path : mRemovableStorageVolumes) {
-            isExsit = false;
-            for (StorageVolume vol : storageVolumes) {
-                if (vol.isRemovable() && path.equals(vol.getPath().replaceFirst(MEDIA_PATH, STORAGE_PATH))) {
-                    isExsit = true;
-                }
-            }
-            if (!isExsit) {
-                Log.d(TAG, "delete path " + path);
-                delete(context, path);
-            }
-        }
     }
 }

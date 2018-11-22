@@ -45,18 +45,19 @@ public class MediaScannerReceiver extends BroadcastReceiver {
         } else if (Intent.ACTION_LOCALE_CHANGED.equals(action)) {
             scanTranslatable(context);
         } else if((VolumeInfo.ACTION_VOLUME_STATE_CHANGED.equals(action))){
-            String id = intent.getStringExtra(VolumeInfo.EXTRA_VOLUME_ID);
-            int state = intent.getIntExtra(VolumeInfo.EXTRA_VOLUME_STATE, -1);
-            Log.d(TAG, "id " + id + " state " + state);
-            if (VolumeInfo.STATE_MOUNTED == state) {
-                Log.d(TAG, "----MediaScanner get volume mounted,start scan---");
+            if(("true".equals(SystemProperties.get("ro.vendor.udisk.visible")))){
+                String id = intent.getStringExtra(VolumeInfo.EXTRA_VOLUME_ID);
+                int state = intent.getIntExtra(VolumeInfo.EXTRA_VOLUME_STATE,-1);
+                if(VolumeInfo.STATE_MOUNTED == state) {
+                    Log.d(TAG,"----MediaScanner get volume mounted,start scan---");
                     /*StorageManager mStorageManager = context.getSystemService(StorageManager.class);
                     VolumeInfo vol = mStorageManager.findVolumeById(id);
                     scanFile(context, vol.getPath().getPath());*/
-                scan(context, MediaProvider.EXTERNAL_VOLUME);
+                    scan(context, MediaProvider.EXTERNAL_VOLUME);
+                }
             }
         } else {
-            if (null != uri && uri.getScheme().equals("file")) {
+            if (uri.getScheme().equals("file")) {
                 // handle intents related to external storage
                 String path = uri.getPath();
                 String externalStoragePath = Environment.getExternalStorageDirectory().getPath();
@@ -68,28 +69,17 @@ public class MediaScannerReceiver extends BroadcastReceiver {
                     Log.e(TAG, "couldn't canonicalize " + path);
                     return;
                 }
-                String volume = MediaProvider.EXTERNAL_VOLUME;
                 if (path.startsWith(legacyPath)) {
                     path = externalStoragePath + path.substring(legacyPath.length());
-                    volume = MediaProvider.INTERNAL_VOLUME;
                 }
 
                 Log.d(TAG, "action: " + action + " path: " + path);
                 if (Intent.ACTION_MEDIA_MOUNTED.equals(action)) {
-                    if(null != path) {
-                        scanFoder(context, MediaProvider.EXTERNAL_VOLUME, path);
-                    } else {
-                        scan(context, MediaProvider.EXTERNAL_VOLUME);
-                    }
+                    // scan whenever any volume is mounted
+                    scan(context, MediaProvider.EXTERNAL_VOLUME);
                 } else if (Intent.ACTION_MEDIA_SCANNER_SCAN_FILE.equals(action) &&
-                        path != null) {
-                    path = path.replaceFirst(MediaProvider.MEDIA_PATH, MediaProvider.STORAGE_PATH);
-                    if (intent.hasExtra("folder")
-                            && intent.getBooleanExtra("folder", false)) {
-                        scanFoder(context, volume, path);
-                    } else {
-                        scanFile(context, volume, path);
-                    }
+                        path != null && path.startsWith(externalStoragePath + "/")) {
+                    scanFile(context, path);
                 }
             }
         }
@@ -102,18 +92,9 @@ public class MediaScannerReceiver extends BroadcastReceiver {
                 new Intent(context, MediaScannerService.class).putExtras(args));
     }
 
-    private void scanFile(Context context, String volume, String path) {
+    private void scanFile(Context context, String path) {
         Bundle args = new Bundle();
-        args.putString("volume", volume);
         args.putString("filepath", path);
-        context.startService(
-                new Intent(context, MediaScannerService.class).putExtras(args));
-    }
-
-    private void scanFoder(Context context, String volume, String path) {
-        Bundle args = new Bundle();
-        args.putString("volume", volume);
-        args.putString("folderpath", path);
         context.startService(
                 new Intent(context, MediaScannerService.class).putExtras(args));
     }

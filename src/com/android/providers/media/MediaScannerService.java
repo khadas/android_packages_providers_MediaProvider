@@ -36,7 +36,6 @@ import android.os.PowerManager;
 import android.os.Process;
 import android.os.UserManager;
 import android.os.storage.StorageManager;
-import android.os.storage.StorageVolume;
 import android.provider.MediaStore;
 import android.util.Log;
 
@@ -44,8 +43,6 @@ import com.android.internal.util.ArrayUtils;
 
 import java.io.File;
 import java.util.Arrays;
-import java.util.ArrayList;
-import java.util.List;
 
 public class MediaScannerService extends Service implements Runnable {
     private static final String TAG = "MediaScannerService";
@@ -54,7 +51,7 @@ public class MediaScannerService extends Service implements Runnable {
     private volatile ServiceHandler mServiceHandler;
     private PowerManager.WakeLock mWakeLock;
     private String[] mExternalStoragePaths;
-
+    
     private void openDatabase(String volumeName) {
         try {
             ContentValues values = new ContentValues();
@@ -62,11 +59,10 @@ public class MediaScannerService extends Service implements Runnable {
             getContentResolver().insert(Uri.parse("content://media/"), values);
         } catch (IllegalArgumentException ex) {
             Log.w(TAG, "failed to open media database");
-        }
+        }         
     }
 
     private void scan(String[] directories, String volumeName) {
-
         Uri uri = Uri.parse("file://" + directories[0]);
         // don't sleep while scanning
         mWakeLock.acquire();
@@ -97,23 +93,13 @@ public class MediaScannerService extends Service implements Runnable {
             mWakeLock.release();
         }
     }
-
+    
     @Override
     public void onCreate() {
         PowerManager pm = (PowerManager)getSystemService(Context.POWER_SERVICE);
         mWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG);
         StorageManager storageManager = (StorageManager)getSystemService(Context.STORAGE_SERVICE);
-//       mExternalStoragePaths = storageManager.getVolumePaths();
-        List<StorageVolume> storageVolumes = storageManager.getStorageVolumes();
-        ArrayList<String> removableStorageVolumes = new ArrayList<String>();
-        for (StorageVolume vol : storageVolumes) {
-            if (vol.isRemovable()) {
-                removableStorageVolumes.add(vol.getPath().replaceFirst(MediaProvider.MEDIA_PATH, MediaProvider.STORAGE_PATH));
-            }
-        }
-        if (removableStorageVolumes.size() > 0) {
-            mExternalStoragePaths = removableStorageVolumes.toArray(new String[0]);
-        }
+        mExternalStoragePaths = storageManager.getVolumePaths();
 
         // Start up the thread running the service.  Note that we create a
         // separate thread because the service normally runs in the process's
@@ -224,8 +210,7 @@ public class MediaScannerService extends Service implements Runnable {
                 return;
             }
             String filePath = arguments.getString("filepath");
-            String folderPath = arguments.getString("folderpath");
-
+            
             try {
                 if (filePath != null) {
                     IBinder binder = arguments.getIBinder("listener");
@@ -248,9 +233,7 @@ public class MediaScannerService extends Service implements Runnable {
                     String volume = arguments.getString("volume");
                     String[] directories = null;
 
-                    if(folderPath != null){
-                        directories = new String[] {folderPath};
-                    } else if (MediaProvider.INTERNAL_VOLUME.equals(volume)) {
+                    if (MediaProvider.INTERNAL_VOLUME.equals(volume)) {
                         // scan internal media storage
                         directories = new String[] {
                                 Environment.getRootDirectory() + "/media",

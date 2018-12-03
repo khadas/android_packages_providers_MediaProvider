@@ -210,7 +210,8 @@ public class MediaScannerService extends Service implements Runnable {
                 return;
             }
             String filePath = arguments.getString("filepath");
-            
+            String folderPath = arguments.getString("folderpath");
+
             try {
                 if (filePath != null) {
                     IBinder binder = arguments.getIBinder("listener");
@@ -233,7 +234,9 @@ public class MediaScannerService extends Service implements Runnable {
                     String volume = arguments.getString("volume");
                     String[] directories = null;
 
-                    if (MediaProvider.INTERNAL_VOLUME.equals(volume)) {
+                    if(folderPath != null){
+                        directories = new String[] {folderPath};
+                    } else if (MediaProvider.INTERNAL_VOLUME.equals(volume)) {
                         // scan internal media storage
                         directories = new String[] {
                                 Environment.getRootDirectory() + "/media",

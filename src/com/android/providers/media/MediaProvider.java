@@ -374,6 +374,39 @@ public class MediaProvider extends ContentProvider {
                     case Intent.ACTION_MEDIA_EJECT:
                     case Intent.ACTION_MEDIA_REMOVED:
                     case Intent.ACTION_MEDIA_BAD_REMOVAL:
+                        Uri uri = Uri.parse("file://" + sv.getPath());
+                        try {
+                            // Send media scanner started and stopped broadcasts for apps that rely
+                            // on these Intents for coarse grained media database notifications.
+                            context.sendBroadcast(
+                                    new Intent(Intent.ACTION_MEDIA_SCANNER_STARTED, uri));
+
+                            Log.d(TAG, "deleting all entries for storage " + sv);
+                            Uri.Builder builder =
+                                    Files.getMtpObjectsUri(volumeName).buildUpon();
+                            builder.appendQueryParameter(MediaStore.PARAM_DELETE_DATA, "false");
+                            delete(builder.build(),
+                                    // the 'like' makes it use the index, the 'lower()' makes it
+                                    // correct when the path contains sqlite wildcard characters
+                                    "_data LIKE ?1 AND lower(substr(_data,1,?2))=lower(?3)",
+                                    new String[]{sv.getPath() + "/%",
+                                            Integer.toString(sv.getPath().length() + 1),
+                                            sv.getPath() + "/"});
+                            // notify on media Uris as well as the files Uri
+                            context.getContentResolver().notifyChange(
+                                    Audio.Media.getContentUri(volumeName), null);
+                            context.getContentResolver().notifyChange(
+                                    Images.Media.getContentUri(volumeName), null);
+                            context.getContentResolver().notifyChange(
+                                    Video.Media.getContentUri(volumeName), null);
+                            context.getContentResolver().notifyChange(
+                                    Files.getContentUri(volumeName), null);
+                        } catch (Exception e) {
+                            Log.e(TAG, "exception deleting storage entries", e);
+                        } finally {
+                            context.sendBroadcast(
+                                    new Intent(Intent.ACTION_MEDIA_SCANNER_FINISHED, uri));
+                        }
                         detachVolume(volumeName);
                         break;
                 }

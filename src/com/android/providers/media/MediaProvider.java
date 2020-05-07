@@ -1853,10 +1853,17 @@ public class MediaProvider extends ContentProvider {
         final String having = null;
         final Cursor c = qb.query(db, projection,
                 selection, selectionArgs, groupBy, having, sortOrder, limit, signal);
-
+        /*
         if (c != null) {
             ((AbstractCursor) c).setNotificationUris(getContext().getContentResolver(),
                     Arrays.asList(uri), UserHandle.myUserId(), false);
+        }*/
+        if (c != null) {
+            String nonotify = uri.getQueryParameter("nonotify");
+            if (nonotify == null || !nonotify.equals("1")) {
+                c.setNotificationUri(getContext().getContentResolver(), uri);
+            }
+
         }
 
         return c;
@@ -4062,6 +4069,8 @@ public class MediaProvider extends ContentProvider {
                 case MTP_OBJECTS:
                 case MTP_OBJECTS_ID:
                     count = deleteRecursive(qb, db, userWhere, userWhereArgs);
+                    Uri notifyUri = Uri.parse("content://" + MediaStore.AUTHORITY + "/" + volumeName);
+                    acceptWithExpansion(helper::notifyChange, notifyUri);
                     break;
                 case AUDIO_GENRES_ID_MEMBERS:
                     count = deleteRecursive(qb, db, userWhere, userWhereArgs);

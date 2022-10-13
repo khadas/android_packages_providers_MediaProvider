@@ -7041,10 +7041,14 @@ public class MediaProvider extends ContentProvider {
                     } else if (isPending.get()) {
                         // Mutation relaxed while pending
                     } else {
-                        Log.w(TAG, "Ignoring mutation of " + column + " from "
-                                + getCallingPackageOrSelf());
-                        initialValues.remove(column);
-                        triggerScan = true;
+                        String callingPackage = getCallingPackageOrSelf();
+                        if ("com.android.gallery3d".equals(callingPackage)) {
+
+                        } else {
+                            Log.w(TAG, "Ignoring mutation of " + column + " from " + callingPackage);
+                            initialValues.remove(column);
+                            triggerScan = true;
+                        }
                     }
 
                     // If we're publishing this item, perform a blocking scan to
